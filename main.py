@@ -1,18 +1,68 @@
+from fastapi import FastAPI, Header, HTTPException
+from pydantic import BaseModel
+from typing import List, Dict, Any, Optional
+from datetime import datetime, timezone
 
-from fastapi import FastAPI
+app = FastAPI(title="AI Coach API")
 
-app = FastAPI()
+# ---- Optional simple auth ----
+SECRET = ""  # put a value if you want header protection
+
+# ---- Payload models to match what Deluge sends ----
+class Note(BaseModel):
+    Note_Title: Optional[str] = None
+    Note_Content: Optional[str] = None
+    Created_Time: Optional[str] = None
+
+class Activity(BaseModel):
+    Subject: Optional[str] = None
+    Description: Optional[str] = None
+    Activity_Type: Optional[str] = None
+    Created_Time: Optional[str] = None
+
+class Payload(BaseModel):
+    module: str
+    record_id: Any
+    fields: Dict[str, Any]
+    activities: List[Activity] = []
+    notes: List[Note] = []
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "time": datetime.now(timezone.utc).isoformat()}
 
 @app.post("/next_action")
-async def next_action(data: dict):
-    # Example scoring logic for MVP
+def next_action(payload: Payload, x_auth_token: Optional[str] = Header(default=None)):
+    # Optional auth
+    if SECRET and x_auth_token != SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    # --- VERY SIMPLE MVP LOGIC (safe to replace later) ---
+    stage = payload.fields.get("Stage") or payload.fields.get("Deal_Stage") or "Unknown"
+    # Dummy scores
+    win = 70 if str(stage).lower() in ("qualified", "proposal sent", "quote sent") else 55
+    urgency = 60
+
+    objections = ["price"] if "price" in (str(payload.notes) + str(payload.activities)).lower() else []
+
+    # Pick a channel
+    next_channel = "Call"
+    if payload.fields.get("Email_Opt_Out") is False:
+        next_channel = "Email"
+
+    summary = [
+        f"Stage: {stage}",
+        "Days since last touch: n/a (MVP)",
+        f"Objections: {', '.join(objections) if objections else 'none detected'}"
+    ]
+
     return {
-        "win_score": 85,
-        "urgency": "high",
-        "next_action": {"channel": "Phone Call"},
-        "objections": ["price", "partner approval"],
-        "summary": ["Stage: Proposal Sent", "Days since last touch: 7", "Objections: price, partner approval"],
-        "sms": "Hi {{First_Name}}, just following up on your solar quote. Let’s confirm the best next step today. – {{Rep}}",
-        "email": "Subject: Next steps on your solar quote\n\nHi {{First_Name}},\n\nHere’s a quick summary of where we’re at. I recommend a short call to confirm numbers and timing. Would today 6pm suit?\n\nCheers,\n{{Rep}}",
-        "call_open": "Hey {{First_Name}}, can I take 60 seconds to review the quote and next steps with you?"
+        "win_score": win,
+        "urgency": urgency,
+        "objections": objections,  # list (works with multi-select)
+        "next_action": {"channel": next_channel, "when": "today 6:15pm", "angle": "bill-swap framing"},
+        "summary": summary,
+        "sms": "Hi {{First_Name}}, quick next step to make solar easy. Have 10 mins later today? – {{Rep}}",
+        "email": "Subject: Next step on your solar quote\n\nHi {{First_Name}}, quick summary above. Can we lock a 10-min slot today/tomorrow?\n\nCheers,\n{{Rep}}",
+        "call_open": "Hey {{First_Name}}, 60 seconds to sanity-check the numbers and next step?"
     }
