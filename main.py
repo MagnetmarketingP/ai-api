@@ -66,3 +66,13 @@ def next_action(payload: Payload, x_auth_token: Optional[str] = Header(default=N
         "email": "Subject: Next step on your solar quote\n\nHi {{First_Name}}, quick summary above. Can we lock a 10-min slot today/tomorrow?\n\nCheers,\n{{Rep}}",
         "call_open": "Hey {{First_Name}}, 60 seconds to sanity-check the numbers and next step?"
     }
+@app.get("/")
+def root():
+    return {
+        "message": "AI API is live",
+        "try": {
+            "health": "/health",
+            "docs": "/docs",
+            "next_action": "POST /next_action"
+        }
+    }
